@@ -1,15 +1,19 @@
 import os
 import json
 import base64
+from dotenv import load_dotenv
+
+# Load environment variables from .env file immediately at startup
+load_dotenv()
+
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-
-# Import Strands components
 from strands import Agent
 from strands.models import BedrockModel
 
 app = FastAPI(title="Internet Archaeologist API")
 
+# Allow CORS for React local dev & deployment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,13 +64,12 @@ async def analyze_artifact(
         encoded_image = base64.b64encode(contents).decode("utf-8")
         image_format = image.filename.split(".")[-1].lower() if "." in image.filename else "jpeg"
         
-        # User message construct
+        # Construct message prompt
         prompt_text = f"Analyze this relic from the perspective of an archaeologist in the year {future_year} AD."
         if description:
             prompt_text += f"\nFragmentary record notes found near site: '{description}'"
 
         # Pass multimodal payload to the Strands Agent
-        # Strands standard message structure for multimodal input
         message = [
             {
                 "role": "user",
@@ -84,11 +87,9 @@ async def analyze_artifact(
 
         # Execute Strands Agent workflow
         response = archaeologist_agent.run(message)
-        
-        # Parse JSON output from Strands Agent text response
         raw_text = response.text.strip()
         
-        # Strip potential markdown formatting if returned
+        # Clean markdown code blocks if present in LLM response
         if raw_text.startswith("```"):
             raw_text = raw_text.split("\n", 1)[1].rsplit("\n", 1)[0].replace("json", "").strip()
 
