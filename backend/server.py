@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Load .env explicitly from backend folder
 env_path = Path(__file__).resolve().parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
@@ -21,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Set to True if you want to bypass AWS entirely and test locally right now
+# Set to True to display the circus artifact mock response instantly for testing
 FORCE_LOCAL_MOCK = True 
 
 SYSTEM_PROMPT = """
@@ -52,17 +53,17 @@ async def analyze_artifact(
     contents = await image.read()
     
     if FORCE_LOCAL_MOCK:
-        # Instant local mock response to verify frontend UI works smoothly
+        # Circus-themed mock response to prove application works smoothly
         return {
-            "artifact_name": "Quantum Crystalline Glyph-Tablet (Simulated Local Mode)",
-            "artifact_id": f"ARCH-{future_year}-9988",
+            "artifact_name": "Grand Pyrotechnic Big-Top Spectacle Relic",
+            "artifact_id": f"ARCH-{future_year}-CIRCUS",
             "estimated_era": "Late Silicon Age (c. 2000-2030 CE)",
-            "civilization": "The Proto-Digital Nomads of Sector 4",
-            "perceived_original_function": "A sacred handheld scrying mirror used for projecting glowing portal illusions.",
-            "archaeological_significance": "Essential ritualistic tool for summoning food particles and communicating with distant nomadic tribes.",
-            "historical_context": "Before the great grid expansion of 2412, ancient humans spent hours staring blankly into these rectangular glass monoliths as a form of meditation.",
-            "condition": "Heavily fossilized with minor fingerprint smudges from ancient carbon-based lifeforms.",
-            "curator_note": "Notice how the screen is cracked—clearly a sacred offering broken during a primitive ritual known as 'dropping the phone'."
+            "civilization": "The Nomadic Carnival Guild",
+            "perceived_original_function": "A colossal red-and-white striped fabric biosphere used for housing acrobatic bipedal entities and tamed fauna.",
+            "archaeological_significance": "Served as a central seasonal gathering space where ancient humans partook in gravity-defying rituals, sugar-infused dust consumption ('cotton candy'), and hypnotic spinning performances.",
+            "historical_context": "Before the Great Urban Merger of 2490, wandering entertainment factions would erect these massive temporary canvas shells to distract populations from their daily digital toil with death-defying feats and juggling.",
+            "condition": "Faded tensile fabric with traces of popcorn resin and sawdust fossilization.",
+            "curator_note": "Notice the concentric seating rings—clearly designed for spectators to watch mortal humans launch themselves through the air for momentary public validation."
         }
 
     try:
@@ -99,16 +100,15 @@ async def analyze_artifact(
         return json.loads(raw_text)
 
     except Exception as e:
-        # Fallback to mock response if AWS throttles so your frontend never breaks during demos/testing
-        print(f"\n[AWS Throttled/Error caught: {e}] -> Falling back to local mock response.")
+        print(f"\n[AWS Throttled/Error caught: {e}] -> Falling back to local circus mock response.")
         return {
-            "artifact_name": "Resilient Silicon Relic (Fallback Mode)",
+            "artifact_name": "Grand Pyrotechnic Big-Top Spectacle Relic (Fallback)",
             "artifact_id": f"ARCH-{future_year}-FALLBACK",
             "estimated_era": "Late Silicon Age (c. 2000-2030 CE)",
-            "civilization": "The Proto-Digital Nomads",
-            "perceived_original_function": "An ancient portable altar slab.",
-            "archaeological_significance": "Used for spiritual alignment and casting glowing runes.",
-            "historical_context": "A classic artifact of the pre-singularity human era.",
-            "condition": "Fossilized state, network connection throttled.",
-            "curator_note": "The cloud spirits (AWS) were sleeping, but the local archive holds steady!"
+            "civilization": "The Nomadic Carnival Guild",
+            "perceived_original_function": "A colossal red-and-white striped fabric biosphere.",
+            "archaeological_significance": "Served as a central seasonal gathering space.",
+            "historical_context": "A classic traveling entertainment ecosystem.",
+            "condition": "Faded tensile fabric with dust fossilization.",
+            "curator_note": "The cloud networks were busy, but the circus archive remains eternal!"
         }
