@@ -1,0 +1,33 @@
+name: CI Build with Podman
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  podman-build:
+    name: Build Image using Podman
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out code from GitHub repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Step 2: Ensure Podman is available and check version
+      - name: Verify Podman Installation
+        run: |
+          podman version
+
+      # Step 3: Build container image using Podman (reads root Dockerfile)
+      - name: Build Container Image
+        run: |
+          podman build -t xenocurator:ci-test -f Dockerfile .
+
+      # Step 4: Validate image by running a quick test command
+      - name: Test Container Run
+        run: |
+          podman run --rm xenocurator:ci-test echo "Container built and ran successfully!"
+          
