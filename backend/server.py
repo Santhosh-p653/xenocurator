@@ -3,12 +3,13 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Force load .env from the current backend directory
+# Load .env from backend directory
 env_path = Path(__file__).resolve().parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import boto3
 from strands import Agent
 from strands.models import BedrockModel
 
@@ -40,12 +41,17 @@ Respond ONLY with a valid JSON object matching this schema precisely without mar
 }
 """
 
-# Initialize Bedrock model with explicit keys loaded from your backend .env
+# Create an explicit boto3 session using the new keys from .env
+boto_session = boto3.Session(
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name=os.getenv("AWS_REGION", "us-east-1")
+)
+
+# Pass the session into BedrockModel
 nova_model = BedrockModel(
     model_id=os.getenv("NOVA_MODEL_ID", "us.amazon.nova-lite-v1:0"),
-    region_name=os.getenv("AWS_REGION", "us-east-1"),
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+    boto_session=boto_session
 )
 
 archaeologist_agent = Agent(
