@@ -61,7 +61,7 @@ async def analyze_artifact(
     try:
         # Read raw image bytes directly
         contents = await image.read()
-        
+
         # Standardize file extension formatting (png, jpeg, webp, etc.)
         image_format = image.filename.split(".")[-1].lower() if "." in image.filename else "jpeg"
         if image_format == "jpg":
