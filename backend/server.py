@@ -95,7 +95,7 @@ async def analyze_artifact(
             }
         ]
 
-        response = archaeologist_agent.run(message)
+        response = archaeologist_agent(message)
         raw_text = str(response.text).strip()
 
         if raw_text.startswith("```"):
