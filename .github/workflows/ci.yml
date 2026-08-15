@@ -19,8 +19,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
-          cache-dependency-path: requirements.txt
 
       - name: Install Dependencies
         run: |
@@ -43,12 +41,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: app/package-lock.json
 
       - name: Install Dependencies
         working-directory: app
-        run: npm ci || npm install
+        run: npm install
 
       - name: Build Frontend
         working-directory: app
@@ -68,8 +64,11 @@ jobs:
 
       - name: Build Container with Podman
         run: |
-          if [ -f backend/Dockerfile ]; then
-            echo "Building backend Dockerfile..."
+          if [ -f Dockerfile.frontend ]; then
+            echo "Building frontend container..."
+            podman build -t xenocurator-frontend:ci -f Dockerfile.frontend .
+          elif [ -f backend/Dockerfile ]; then
+            echo "Building backend container..."
             podman build -t xenocurator-backend:ci -f backend/Dockerfile .
           elif [ -f Dockerfile ]; then
             echo "Building root Dockerfile..."
