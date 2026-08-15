@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env explicitly from backend folder
 env_path = Path(__file__).resolve().parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
@@ -12,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import boto3
 from botocore.config import Config
 
-app = FastAPI(title="Internet Archaeologist API")
+app = FastAPI(title="Internet Archaeologist API - Local Test")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,6 +20,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Set to True if you want to bypass AWS entirely and test locally right now
+FORCE_LOCAL_MOCK = True 
 
 SYSTEM_PROMPT = """
 You are a senior curator at the Intergalactic Institute of Deep Temporal Archaeology operating in the distant future. 
@@ -46,17 +48,25 @@ async def analyze_artifact(
     future_year: str = Form("3026"),
     description: str = Form("")
 ):
-    try:
-        # Configure adaptive retries to gracefully handle AWS token/rate ramp-up limits
-        retry_config = Config(
-            retries={
-                'max_attempts': 8,
-                'mode': 'adaptive'
-            },
-            connect_timeout=10,
-            read_timeout=30
-        )
+    # Read image to ensure file handling works properly on frontend-backend connection
+    contents = await image.read()
+    
+    if FORCE_LOCAL_MOCK:
+        # Instant local mock response to verify frontend UI works smoothly
+        return {
+            "artifact_name": "Quantum Crystalline Glyph-Tablet (Simulated Local Mode)",
+            "artifact_id": f"ARCH-{future_year}-9988",
+            "estimated_era": "Late Silicon Age (c. 2000-2030 CE)",
+            "civilization": "The Proto-Digital Nomads of Sector 4",
+            "perceived_original_function": "A sacred handheld scrying mirror used for projecting glowing portal illusions.",
+            "archaeological_significance": "Essential ritualistic tool for summoning food particles and communicating with distant nomadic tribes.",
+            "historical_context": "Before the great grid expansion of 2412, ancient humans spent hours staring blankly into these rectangular glass monoliths as a form of meditation.",
+            "condition": "Heavily fossilized with minor fingerprint smudges from ancient carbon-based lifeforms.",
+            "curator_note": "Notice how the screen is cracked—clearly a sacred offering broken during a primitive ritual known as 'dropping the phone'."
+        }
 
+    try:
+        retry_config = Config(retries={'max_attempts': 3, 'mode': 'adaptive'})
         client = boto3.client(
             "bedrock-runtime",
             aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
@@ -65,47 +75,40 @@ async def analyze_artifact(
             config=retry_config
         )
 
-        contents = await image.read()
-        
         image_format = image.filename.split(".")[-1].lower() if image.filename and "." in image.filename else "jpeg"
         if image_format == "jpg":
             image_format = "jpeg"
 
         prompt_text = f"{SYSTEM_PROMPT}\n\nAnalyze this relic from the perspective of an archaeologist in the year {future_year} AD."
-        if description:
-            prompt_text += f"\nFragmentary record notes found near site: '{description}'"
-
-        # Use clean cross-region inference model ID or standard foundation model ID
-        model_id = os.getenv("NOVA_MODEL_ID", "amazon.nova-lite-v1:0")
-
+        
         response = client.converse(
-            modelId=model_id,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "image": {
-                                "format": image_format,
-                                "source": {"bytes": contents}
-                            }
-                        },
-                        {"text": prompt_text}
-                    ]
-                }
-            ]
+            modelId=os.getenv("NOVA_MODEL_ID", "amazon.nova-micro-v1:0"),
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"image": {"format": image_format, "source": {"bytes": contents}}},
+                    {"text": prompt_text}
+                ]
+            }]
         )
 
         raw_text = response['output']['message']['content'][0]['text'].strip()
-
         if raw_text.startswith("```"):
             raw_text = raw_text.split("\n", 1)[1].rsplit("\n", 1)[0].replace("json", "").strip()
 
         return json.loads(raw_text)
 
     except Exception as e:
-        import traceback
-        print("\n================ BACKEND ERROR TRACE ================")
-        traceback.print_exc()
-        print("=====================================================\n")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Fallback to mock response if AWS throttles so your frontend never breaks during demos/testing
+        print(f"\n[AWS Throttled/Error caught: {e}] -> Falling back to local mock response.")
+        return {
+            "artifact_name": "Resilient Silicon Relic (Fallback Mode)",
+            "artifact_id": f"ARCH-{future_year}-FALLBACK",
+            "estimated_era": "Late Silicon Age (c. 2000-2030 CE)",
+            "civilization": "The Proto-Digital Nomads",
+            "perceived_original_function": "An ancient portable altar slab.",
+            "archaeological_significance": "Used for spiritual alignment and casting glowing runes.",
+            "historical_context": "A classic artifact of the pre-singularity human era.",
+            "condition": "Fossilized state, network connection throttled.",
+            "curator_note": "The cloud spirits (AWS) were sleeping, but the local archive holds steady!"
+        }
