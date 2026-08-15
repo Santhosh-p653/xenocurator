@@ -3,12 +3,13 @@ import json
 import base64
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import boto3
+
+# Import Strands components
+from strands import Agent
+from strands.models import BedrockModel
 
 app = FastAPI(title="Internet Archaeologist API")
 
-# Allow CORS for React local dev & serverless deployment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,18 +18,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize AWS Bedrock Runtime Client (Credentials pulled from env)
-bedrock = boto3.client(
-    service_name="bedrock-runtime",
-    region_name=os.getenv("AWS_REGION", "us-east-1")
-)
-
 SYSTEM_PROMPT = """
 You are a senior curator at the Intergalactic Institute of Deep Temporal Archaeology operating in the distant future. 
-Your task is to analyze modern-day human relics (21st century or earlier) through a wildly mistaken, overly academic, yet logical futuristic lens. 
-You will receive an image of an object, a target future year, and optional user notes.
+Your task is to analyze modern-day human relics through a wildly mistaken, overly academic, yet logical futuristic lens.
 
-Respond ONLY with a valid JSON object matching this schema precisely without markdown wrapping:
+Respond ONLY with a valid JSON object matching this schema precisely without markdown code blocks:
 {
   "artifact_name": "Fictional speculative name",
   "artifact_id": "ARCH-XXXX-XXXX",
@@ -42,6 +36,18 @@ Respond ONLY with a valid JSON object matching this schema precisely without mar
 }
 """
 
+# Initialize Amazon Nova via Strands Bedrock Model driver
+nova_model = BedrockModel(
+    model_id=os.getenv("NOVA_MODEL_ID", "amazon.nova-lite-v1:0"),
+    region_name=os.getenv("AWS_REGION", "us-east-1")
+)
+
+# Initialize the Strands Archaeologist Agent
+archaeologist_agent = Agent(
+    model=nova_model,
+    system_prompt=SYSTEM_PROMPT
+)
+
 @app.post("/analyze")
 async def analyze_artifact(
     image: UploadFile = File(...),
@@ -52,50 +58,44 @@ async def analyze_artifact(
         # Read and encode image to Base64
         contents = await image.read()
         encoded_image = base64.b64encode(contents).decode("utf-8")
+        image_format = image.filename.split(".")[-1].lower() if "." in image.filename else "jpeg"
         
         # User message construct
         prompt_text = f"Analyze this relic from the perspective of an archaeologist in the year {future_year} AD."
         if description:
             prompt_text += f"\nFragmentary record notes found near site: '{description}'"
 
-        # Amazon Nova / Bedrock Payload Construction
-        body = {
-            "schemaVersion": "messages-v1",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "image": {
-                                "format": image.filename.split(".")[-1].lower() if "." in image.filename else "jpeg",
-                                "source": {"bytes": encoded_image}
-                            }
-                        },
-                        {"text": prompt_text}
-                    ]
-                }
-            ],
-            "system": [{"text": SYSTEM_PROMPT}],
-            "inferenceConfig": {
-                "maxTokens": 1000,
-                "temperature": 0.7
+        # Pass multimodal payload to the Strands Agent
+        # Strands standard message structure for multimodal input
+        message = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "image": {
+                            "format": image_format,
+                            "source": {"bytes": encoded_image}
+                        }
+                    },
+                    {"text": prompt_text}
+                ]
             }
-        }
+        ]
 
-        # Invoke Amazon Nova (amazon.nova-lite-v1:0 or amazon.nova-pro-v1:0)
-        response = bedrock.invoke_model(
-            modelId=os.getenv("NOVA_MODEL_ID", "amazon.nova-lite-v1:0"),
-            body=json.dumps(body)
-        )
+        # Execute Strands Agent workflow
+        response = archaeologist_agent.run(message)
         
-        response_body = json.loads(response.get("body").read())
-        raw_text = response_body['output']['message']['content'][0]['text']
+        # Parse JSON output from Strands Agent text response
+        raw_text = response.text.strip()
         
-        # Parse and return JSON artifact payload
+        # Strip potential markdown formatting if returned
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("\n", 1)[1].rsplit("\n", 1)[0].replace("json", "").strip()
+
         artifact_data = json.loads(raw_text)
         return artifact_data
 
     except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Failed to parse structured response from Nova model.")
+        raise HTTPException(status_code=500, detail="Failed to parse structured JSON response from Strands Agent.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
