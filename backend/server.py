@@ -3,15 +3,13 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env from backend directory explicitly
+# Load .env explicitly from backend folder
 env_path = Path(__file__).resolve().parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import boto3
-from strands import Agent
-from strands.models import BedrockModel
 
 app = FastAPI(title="Internet Archaeologist API")
 
@@ -41,23 +39,6 @@ Respond ONLY with a valid JSON object matching this schema precisely without mar
 }
 """
 
-# Establish authenticated session using your working keys
-boto_session = boto3.Session(
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-    region_name=os.getenv("AWS_REGION", "us-east-1")
-)
-
-nova_model = BedrockModel(
-    model_id=os.getenv("NOVA_MODEL_ID", "us.amazon.nova-lite-v1:0"),
-    boto_session=boto_session
-)
-
-archaeologist_agent = Agent(
-    model=nova_model,
-    system_prompt=SYSTEM_PROMPT
-)
-
 @app.post("/analyze")
 async def analyze_artifact(
     image: UploadFile = File(...),
@@ -65,38 +46,43 @@ async def analyze_artifact(
     description: str = Form("")
 ):
     try:
+        # Initialize boto3 client using environment variables
+        client = boto3.client(
+            "bedrock-runtime",
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION", "us-east-1")
+        )
+
         contents = await image.read()
         
         image_format = image.filename.split(".")[-1].lower() if image.filename and "." in image.filename else "jpeg"
         if image_format == "jpg":
             image_format = "jpeg"
 
-        prompt_text = f"Analyze this relic from the perspective of an archaeologist in the year {future_year} AD."
+        prompt_text = f"{SYSTEM_PROMPT}\n\nAnalyze this relic from the perspective of an archaeologist in the year {future_year} AD."
         if description:
             prompt_text += f"\nFragmentary record notes found near site: '{description}'"
 
-        message = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "image": {
-                            "format": image_format,
-                            "source": {
-                                "bytes": contents
+        response = client.converse(
+            modelId=os.getenv("NOVA_MODEL_ID", "us.amazon.nova-lite-v1:0"),
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "image": {
+                                "format": image_format,
+                                "source": {"bytes": contents}
                             }
-                        }
-                    },
-                    {
-                        "text": prompt_text
-                    }
-                ]
-            }
-        ]
+                        },
+                        {"text": prompt_text}
+                    ]
+                }
+            ]
+        )
 
-        # Execute agent workflow
-        response = archaeologist_agent(message)
-        raw_text = str(response.text).strip()
+        raw_text = response['output']['message']['content'][0]['text'].strip()
 
         if raw_text.startswith("```"):
             raw_text = raw_text.split("\n", 1)[1].rsplit("\n", 1)[0].replace("json", "").strip()
