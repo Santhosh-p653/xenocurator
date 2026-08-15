@@ -10,10 +10,8 @@ load_dotenv(dotenv_path=env_path)
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import boto3
-from strands import Agent
-from strands.models import BedrockModel
 
-app = FastAPI(title="Internet Archaeologist API")
+app = FastAPI(title="Internet Archaeologist API - Key Test")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,41 +21,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SYSTEM_PROMPT = """
-You are a senior curator at the Intergalactic Institute of Deep Temporal Archaeology operating in the distant future. 
-Your task is to analyze modern-day human relics through a wildly mistaken, overly academic, yet logical futuristic lens.
-
-Respond ONLY with a valid JSON object matching this schema precisely without markdown code blocks:
-{
-  "artifact_name": "Fictional speculative name",
-  "artifact_id": "ARCH-XXXX-XXXX",
-  "estimated_era": "e.g., Late Silicon Age (c. 2000-2030 CE)",
-  "civilization": "e.g., The Proto-Digital Nomads",
-  "perceived_original_function": "Funny/misunderstood purpose",
-  "archaeological_significance": "Why this object mattered to their ritualistic or daily life",
-  "historical_context": "Deep historical lore explaining how humans lived back then based on this artifact",
-  "condition": "e.g., Heavily fossilized, missing battery sac",
-  "curator_note": "A witty closing comment from the chief archaeologist"
-}
-"""
-
-# Create explicit boto3 session using keys from backend/.env
-boto_session = boto3.Session(
-    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-    region_name=os.getenv("AWS_REGION", "us-east-1")
-)
-
-nova_model = BedrockModel(
-    model_id=os.getenv("NOVA_MODEL_ID", "us.amazon.nova-lite-v1:0"),
-    boto_session=boto_session
-)
-
-archaeologist_agent = Agent(
-    model=nova_model,
-    system_prompt=SYSTEM_PROMPT
-)
-
 @app.post("/analyze")
 async def analyze_artifact(
     image: UploadFile = File(...),
@@ -65,38 +28,42 @@ async def analyze_artifact(
     description: str = Form("")
 ):
     try:
+        # 1. Test raw boto3 client initialization with new keys
+        client = boto3.client(
+            "bedrock-runtime",
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            region_name=os.getenv("AWS_REGION", "us-east-1")
+        )
+
         contents = await image.read()
-        
         image_format = image.filename.split(".")[-1].lower() if image.filename and "." in image.filename else "jpeg"
         if image_format == "jpg":
             image_format = "jpeg"
 
-        prompt_text = f"Analyze this relic from the perspective of an archaeologist in the year {future_year} AD."
-        if description:
-            prompt_text += f"\nFragmentary record notes found near site: '{description}'"
+        prompt_text = f"Analyze this relic from the perspective of an archaeologist in the year {future_year} AD. Respond ONLY with a valid JSON object with keys: artifact_name, artifact_id, estimated_era, civilization, perceived_original_function, archaeological_significance, historical_context, condition, curator_note."
 
-        message = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "image": {
-                            "format": image_format,
-                            "source": {
-                                "bytes": contents
+        # 2. Direct Bedrock Converse API payload structure (skips Strands layer completely)
+        response = client.converse(
+            modelId=os.getenv("NOVA_MODEL_ID", "us.amazon.nova-lite-v1:0"),
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "image": {
+                                "format": image_format,
+                                "source": {"bytes": contents}
                             }
-                        }
-                    },
-                    {
-                        "text": prompt_text
-                    }
-                ]
-            }
-        ]
+                        },
+                        {"text": prompt_text}
+                    ]
+                }
+            ]
+        )
 
-        # Execute agent directly by calling it as a function
-        response = archaeologist_agent(message)
-        raw_text = str(response.text).strip()
+        # Extract text response from Bedrock Converse structure
+        raw_text = response['output']['message']['content'][0]['text'].strip()
 
         if raw_text.startswith("```"):
             raw_text = raw_text.split("\n", 1)[1].rsplit("\n", 1)[0].replace("json", "").strip()
@@ -105,7 +72,7 @@ async def analyze_artifact(
 
     except Exception as e:
         import traceback
-        print("\n================ DETAILED BACKEND TRACE ================")
+        print("\n================ DIRECT BEDROCK TEST ERROR ================")
         traceback.print_exc()
-        print("========================================================\n")
+        print("===========================================================\n")
         raise HTTPException(status_code=500, detail=str(e))
