@@ -1,9 +1,11 @@
 import os
 import json
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from .env file immediately at startup
-load_dotenv()
+# Force load .env from the current backend directory
+env_path = Path(__file__).resolve().parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +14,6 @@ from strands.models import BedrockModel
 
 app = FastAPI(title="Internet Archaeologist API")
 
-# Allow CORS for React local dev & deployment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,14 +40,14 @@ Respond ONLY with a valid JSON object matching this schema precisely without mar
 }
 """
 
-# Initialize Amazon Nova via Strands Bedrock Model driver
-# Standard Bedrock Cross-Region inference profile format (e.g., us.amazon.nova-lite-v1:0)
+# Initialize Bedrock model with explicit keys loaded from your backend .env
 nova_model = BedrockModel(
     model_id=os.getenv("NOVA_MODEL_ID", "us.amazon.nova-lite-v1:0"),
-    region_name=os.getenv("AWS_REGION", "us-east-1")
+    region_name=os.getenv("AWS_REGION", "us-east-1"),
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
 )
 
-# Initialize the Strands Archaeologist Agent
 archaeologist_agent = Agent(
     model=nova_model,
     system_prompt=SYSTEM_PROMPT
@@ -59,20 +60,16 @@ async def analyze_artifact(
     description: str = Form("")
 ):
     try:
-        # Read raw image bytes directly
         contents = await image.read()
-
-        # Standardize file extension formatting (png, jpeg, webp, etc.)
-        image_format = image.filename.split(".")[-1].lower() if "." in image.filename else "jpeg"
+        
+        image_format = image.filename.split(".")[-1].lower() if image.filename and "." in image.filename else "jpeg"
         if image_format == "jpg":
             image_format = "jpeg"
 
-        # Construct prompt text
         prompt_text = f"Analyze this relic from the perspective of an archaeologist in the year {future_year} AD."
         if description:
             prompt_text += f"\nFragmentary record notes found near site: '{description}'"
 
-        # Pass multimodal payload to Strands Agent (pass raw binary 'contents', NOT Base64 string)
         message = [
             {
                 "role": "user",
@@ -80,31 +77,29 @@ async def analyze_artifact(
                     {
                         "image": {
                             "format": image_format,
-                            "source": {"bytes": contents}
+                            "source": {
+                                "bytes": contents
+                            }
                         }
                     },
-                    {"text": prompt_text}
+                    {
+                        "text": prompt_text
+                    }
                 ]
             }
         ]
 
-        # Execute Strands Agent workflow
         response = archaeologist_agent.run(message)
         raw_text = str(response.text).strip()
 
-        # Clean markdown code blocks if present in LLM response
         if raw_text.startswith("```"):
             raw_text = raw_text.split("\n", 1)[1].rsplit("\n", 1)[0].replace("json", "").strip()
 
-        artifact_data = json.loads(raw_text)
-        return artifact_data
+        return json.loads(raw_text)
 
-    except json.JSONDecodeError as err:
-        print(f"\n[JSON Decode Error]: {err}")
-        raise HTTPException(
-            status_code=500, 
-            detail="Failed to parse structured JSON response from Strands Agent."
-        )
     except Exception as e:
-        print(f"\n[Backend Error]: {str(e)}")
+        import traceback
+        print("\n================ DETAILED BACKEND TRACE ================")
+        traceback.print_exc()
+        print("========================================================\n")
         raise HTTPException(status_code=500, detail=str(e))
