@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
 
 interface ArtifactReport {
   artifact_name: string;
@@ -89,7 +91,7 @@ export default function App() {
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Found near a ancient caffeine consumption node..."
+                placeholder="e.g. Found near an ancient caffeine consumption node..."
                 rows={3}
               />
             </div>
@@ -159,5 +161,16 @@ export default function App() {
         </section>
       </main>
     </div>
+  );
+}
+
+// Ensure Mount Logic exists so Vite loads the component into index.html
+const rootElement = document.getElementById('root');
+if (rootElement && !rootElement.innerHTML) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
   );
 }
