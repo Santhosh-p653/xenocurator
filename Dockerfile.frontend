@@ -1,0 +1,19 @@
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy dependency manifests and install
+COPY package*.json ./
+RUN npm install
+
+# Copy frontend application files
+COPY app/ ./app/
+COPY index.html ./
+COPY tsconfig*.json ./
+COPY vite.config.* ./
+
+# Expose Vite dev server port
+EXPOSE 5173
+
+# Run Vite dev server bound to 0.0.0.0 so Docker can map ports
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
