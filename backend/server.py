@@ -10,6 +10,7 @@ load_dotenv(dotenv_path=env_path)
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import boto3
+from botocore.config import Config
 
 app = FastAPI(title="Internet Archaeologist API")
 
@@ -46,12 +47,22 @@ async def analyze_artifact(
     description: str = Form("")
 ):
     try:
-        # Initialize boto3 client using environment variables
+        # Configure adaptive retries to gracefully handle AWS token/rate ramp-up limits
+        retry_config = Config(
+            retries={
+                'max_attempts': 8,
+                'mode': 'adaptive'
+            },
+            connect_timeout=10,
+            read_timeout=30
+        )
+
         client = boto3.client(
             "bedrock-runtime",
             aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
             aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("AWS_REGION", "us-east-1")
+            region_name=os.getenv("AWS_REGION", "us-east-1"),
+            config=retry_config
         )
 
         contents = await image.read()
@@ -64,8 +75,11 @@ async def analyze_artifact(
         if description:
             prompt_text += f"\nFragmentary record notes found near site: '{description}'"
 
+        # Use clean cross-region inference model ID or standard foundation model ID
+        model_id = os.getenv("NOVA_MODEL_ID", "amazon.nova-lite-v1:0")
+
         response = client.converse(
-            modelId=os.getenv("NOVA_MODEL_ID", "us.amazon.nova-lite-v1:0"),
+            modelId=model_id,
             messages=[
                 {
                     "role": "user",
