@@ -41,14 +41,13 @@ Respond ONLY with a valid JSON object matching this schema precisely without mar
 }
 """
 
-# Create an explicit boto3 session using the new keys from .env
+# Create explicit boto3 session using keys from backend/.env
 boto_session = boto3.Session(
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
     region_name=os.getenv("AWS_REGION", "us-east-1")
 )
 
-# Pass the session into BedrockModel
 nova_model = BedrockModel(
     model_id=os.getenv("NOVA_MODEL_ID", "us.amazon.nova-lite-v1:0"),
     boto_session=boto_session
@@ -95,6 +94,7 @@ async def analyze_artifact(
             }
         ]
 
+        # Execute agent directly by calling it as a function
         response = archaeologist_agent(message)
         raw_text = str(response.text).strip()
 
